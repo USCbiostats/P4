@@ -1,8 +1,12 @@
 ---
-title: "Untitled"
+title: "Anti conservation analysis. mhic, lag1, pwd & var"
 author: "Emil Hvitfeldt"
 date: "11/21/2019"
-output: html_document
+description: "This is a test"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
 ---
 
 ```{r setup, include=FALSE}
