@@ -1,0 +1,205 @@
+---
+title: "Untitled"
+author: "Emil Hvitfeldt"
+date: "11/21/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE)
+```
+
+## R Markdown
+
+```{r, message=FALSE}
+library(tidyverse)
+library(minfi)
+library(conflicted)
+conflict_prefer("filter", "dplyr")
+conflict_prefer("desc", "dplyr")
+
+set.seed(1234)
+```
+
+```{r}
+idat_folder <- "~/Data/methylation/idat"
+data_directory <- "~/Data/methylation/directory.csv"
+```
+
+```{r}
+idat_to_beta_values_noob <- function(...) {
+  RGset <- read.metharray.exp(...)
+  RGset@annotation = c(array = "IlluminaHumanMethylationEPIC", annotation = "ilm10b4.hg19")
+
+  MSet.noob <- preprocessNoob(RGset, offset = 15, dyeCorr = TRUE, verbose = TRUE)
+
+  ratioSet.noob <- ratioConvert(MSet.noob, what =  "both", keepCN = TRUE)
+  beta.noob <- getBeta(ratioSet.noob)
+  beta.noob
+}
+```
+
+```{r}
+target_df <- read_csv(data_directory) %>%
+  filter(jh_11_19) %>%
+  dplyr::rename(Basename = basename)
+```
+
+## Minfi
+
+```{r}
+betas <- idat_to_beta_values_noob(base = idat_folder,
+                                  targets = target_df,
+                                  force = TRUE)
+```
+
+```{r}
+betas_df <- as.data.frame(betas) %>%
+  tibble::rownames_to_column()
+```
+
+```{r}
+glimpse(betas_df)
+```
+
+```{r}
+island_ref <- as.data.frame(Islands.UCSC) %>%
+  tibble::rownames_to_column() %>%
+  filter(Relation_to_Island == "Island")
+```
+
+```{r}
+ddd <- betas_df %>%
+  inner_join(island_ref, by = "rowname") %>% 
+  select(rowname, Islands_Name, everything()) %>%
+  select(-c(rowname, Relation_to_Island)) %>%
+  nest(data = -c(Islands_Name)) %>%
+  mutate(n_obs = map_dbl(data, nrow))
+```
+
+```{r}
+ddd
+```
+
+### mhic
+
+```{r}
+#' This function takes a data.frame. then calculates the procentage of values
+#' between 0.2 and 0.8
+mhic_vec <- function(col) {
+  unlist(col) %>% 
+    between(0.2, 0.8) %>%
+    mean(rm.na = TRUE)
+}
+```
+
+```{r}
+ddd <- ddd %>%
+  mutate(mhic = map_dbl(data, ~ mhic_vec(.x)))
+```
+
+### acf
+
+```{r}
+#' This function takes a data.frame. then performs acf on the columns one by
+#' one where after it is taking its mean.
+acf_df_lag <- function(data, lag) {
+  mean(map_dbl(data, ~ acf(.x, lag.max = lag, plot = FALSE)$acf[lag + 1]))
+}
+```
+
+```{r}
+ddd <- ddd %>%
+  mutate(acf = map_dbl(data, ~ acf_df_lag(.x, lag = 1)))
+```
+
+### pwd
+
+```{r}
+#' This function takes a data.frame. then it calculates pairwise distance using
+#' manhattan distances and then takes the mean
+pwd_df <- function(data) {
+  as.matrix(data) %>%
+    dist(method = "manhattan") %>%
+    mean()
+}
+```
+
+```{r}
+ddd <- ddd %>%
+  mutate(pwd = map_dbl(data, ~ pwd_df(.x)))
+```
+
+### Variance
+
+```{r}
+#' This function takes a data.frame. then calculates the variance within each 
+#' column and takes the average.
+var_df <- function(data) {
+  map_dbl(data, var) %>%
+    mean()
+}
+```
+
+```{r}
+ddd <- ddd %>%
+  mutate(var = map_dbl(data, ~ var_df(.x)))
+```
+
+## Data viz
+
+```{r}
+ddd %>%
+  filter(n_obs > 9) %>%
+  select(-data) %>%
+  pivot_longer(cols = c(mhic, acf, pwd, var)) %>%
+  ggplot(aes(value)) +
+  geom_histogram(bins = 100) +
+  facet_wrap(~ name, scales = "free") +
+  labs(title = "distribution of 4 measures")
+```
+
+We have about 5000 islands with at least 10 cpgs in them
+
+```{r}
+ddd %>%
+  filter(n_obs > 9) %>%
+  nrow()
+```
+
+```{r}
+sss <- ddd %>%
+  filter(n_obs > 9) %>%
+  select(-data) %>%
+  pivot_longer(cols = c(mhic, acf, pwd, var)) %>%
+  mutate(value = if_else(name == "acf", -value, value)) %>%
+  group_by(name) %>%
+  mutate(top500 = sort(value, decreasing = TRUE)[500] <= value) %>%
+  ungroup()
+```
+
+```{r}
+library(UpSetR)
+
+sss %>%
+  filter(top500) %>%
+  split(.$name) %>%
+  map(~ .x$Islands_Name) %>%
+  fromList() %>%
+  upset(empty.intersections = "on", 
+        queries = list(list(query = intersects, 
+                            params = list("acf", "mhic", "pwd", "var"), 
+                            color = "orange", 
+                            active = T)))
+```
+
+```{r}
+library(corrr)
+ddd %>%
+  filter(n_obs > 9) %>%
+  select(c(mhic, acf, pwd, var)) %>%
+  correlate() %>%
+  rearrange() %>%
+  shave() %>%
+  fashion()
+```
