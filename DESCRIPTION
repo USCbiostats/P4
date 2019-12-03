@@ -15,4 +15,7 @@ Imports:
     htmltools,
     fs,
     purrr,
-    rmarkdown
+    rmarkdown,
+    magrittr,
+    rvest
+RoxygenNote: 7.0.1.9000
