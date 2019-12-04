@@ -1,0 +1,63 @@
+---
+title: "Adding annotation information to beta values"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE, message = FALSE, warning = FALSE)
+```
+
+## Setup
+
+Loading packages
+
+```{r, message=FALSE, warning=FALSE}
+library(sesame)
+library(tidyverse)
+library(IlluminaHumanMethylationEPICanno.ilm10b4.hg19)
+```
+
+```{r}
+idat_folder <- "~/Data/methylation/idat"
+```
+
+Example of extraction of beta values for 1 sample using **sesame**.
+
+```{r}
+sesame_data <- openSesame(file.path(idat_folder, "200514030126_R06C01"))
+```
+
+we then turn it into a tibble with two columns, `beta` and `site`
+
+```{r}
+sesame_df <- as.data.frame(sesame_data) %>%
+  rownames_to_column(var = "site") %>%
+  dplyr::rename(beta = sesame_data)
+
+head(sesame_df)
+```
+
+Here we create a tibble of chromosome location information
+
+```{r}
+chr_ref <- tibble(
+  chr = Locations$chr,
+  site = Locations@rownames
+)
+
+head(chr_ref)
+```
+
+lastly we can join those two tibbles together
+
+```{r}
+sesame_df_chr <- sesame_df %>%
+  left_join(chr_ref, by = "site")
+
+head(sesame_df_chr)
+```
+
+This is a general workflow, `IlluminaHumanMethylationEPICanno.ilm10b4.hg19` includes many other annotation information that can be used.
