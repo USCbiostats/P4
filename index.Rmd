@@ -1,0 +1,55 @@
+---
+title: "P4 projects"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(htmltools)
+```
+
+```{css, echo=FALSE}
+@import url(https://fonts.googleapis.com/css?family=Montserrat);
+
+body {
+  font-size: 25px;
+  font-family:Montserrat
+}
+
+h1.title {
+    text-align: center;
+    font-size: 3em;
+}
+
+dd {
+    margin-left: 50px;
+}
+```
+
+
+```{r, echo=FALSE, message=FALSE}
+library(fs)
+library(rvest)
+
+foldes <- dir_ls(type = "directory") %>%
+  setdiff(c("R", "man"))
+
+expand_folder <- function(folder) {
+  c(
+    list(tags$dt(folder)),
+    purrr::map(dir_ls(folder, regexp = "\\.html$"), ~ {
+      tags$dd(tags$a(read_html(.x) %>% html_nodes("title") %>% html_text(), 
+                     href = .x))
+      })
+  )
+}
+
+```
+
+```{r, echo=FALSE}
+withTags(
+  dl(
+    purrr::map(foldes, expand_folder)
+  )
+)
+```
